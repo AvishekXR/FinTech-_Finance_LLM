@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Finance LLM — How We Built It</title>
+<style>
+  :root{
+    --navy:#0f2033; --slate:#33475b; --ink:#1a2532; --mut:#5c6b7a;
+    --line:#e2e8f0; --bg:#f6f8fb; --card:#ffffff;
+    --green:#137a4f; --greenbg:#e7f5ee; --red:#b4232a; --redbg:#fbeaea;
+    --blue:#1c5fb0; --bluebg:#e8f0fb; --amber:#9a6b00; --amberbg:#fdf3dd;
+    --accent:#1c5fb0;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    line-height:1.65;font-size:16px;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:900px;margin:0 auto;padding:0 22px}
+  h1,h2,h3{line-height:1.25;color:var(--navy);font-weight:700}
+  h2{font-size:1.6rem;margin:0 0 .2rem}
+  h3{font-size:1.15rem;margin:1.6rem 0 .4rem;color:var(--slate)}
+  p{margin:.7rem 0}
+  code{background:#eef2f7;padding:.1em .4em;border-radius:4px;font-size:.9em;
+    font-family:"SF Mono",Consolas,Menlo,monospace}
+  /* cover */
+  .cover{background:linear-gradient(135deg,#0f2033,#1c3a5e);color:#fff;padding:64px 22px 56px}
+  .cover .wrap{max-width:900px}
+  .cover .kicker{letter-spacing:.14em;text-transform:uppercase;font-size:.75rem;
+    color:#9fc0e8;margin:0 0 14px;font-weight:600}
+  .cover h1{color:#fff;font-size:2.5rem;margin:0 0 12px;letter-spacing:-.02em}
+  .cover p{color:#cdd9e6;font-size:1.12rem;max-width:640px}
+  .cover .meta{margin-top:26px;font-size:.85rem;color:#8fa8c4}
+  /* section shell */
+  section{padding:40px 0;border-bottom:1px solid var(--line)}
+  .num{display:inline-block;font-size:.72rem;font-weight:700;letter-spacing:.1em;
+    color:var(--accent);background:var(--bluebg);padding:4px 10px;border-radius:20px;
+    text-transform:uppercase;margin-bottom:12px}
+  .lead{font-size:1.08rem;color:var(--slate)}
+  /* cards */
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;
+    padding:20px 22px;margin:18px 0;box-shadow:0 1px 2px rgba(15,32,51,.04)}
+  .card h3{margin-top:0}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:680px){.grid2{grid-template-columns:1fr}}
+  /* callouts */
+  .callout{border-left:4px solid var(--accent);background:var(--bluebg);
+    padding:14px 18px;border-radius:0 8px 8px 0;margin:18px 0}
+  .callout.why{border-color:var(--amber);background:var(--amberbg)}
+  .callout.key{border-color:var(--green);background:var(--greenbg)}
+  .callout b{color:var(--navy)}
+  .analogy{font-style:italic;color:var(--slate)}
+  /* data example block */
+  .data{background:#0f2033;color:#d6e3f0;border-radius:10px;padding:16px 18px;
+    font-family:"SF Mono",Consolas,Menlo,monospace;font-size:.82rem;line-height:1.6;
+    overflow-x:auto;margin:14px 0;white-space:pre}
+  .data .k{color:#7fb3ff}.data .s{color:#9ae6b4}.data .c{color:#8899aa}
+  /* tables */
+  table{border-collapse:collapse;width:100%;margin:16px 0;font-size:.92rem}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line)}
+  th{background:#eef2f7;color:var(--slate);font-weight:600;font-size:.8rem;
+    text-transform:uppercase;letter-spacing:.03em}
+  tr:last-child td{border-bottom:none}
+  .tag{display:inline-block;font-size:.72rem;font-weight:700;padding:2px 8px;border-radius:5px}
+  .tag.ok{background:var(--greenbg);color:var(--green)}
+  .tag.no{background:var(--redbg);color:var(--red)}
+  /* before/after */
+  .ba{display:grid;grid-template-columns:1fr 1fr;gap:0;border-radius:12px;overflow:hidden;
+    border:1px solid var(--line);margin:18px 0}
+  @media(max-width:680px){.ba{grid-template-columns:1fr}}
+  .ba .col{padding:18px 20px}
+  .ba .before{background:var(--redbg)}
+  .ba .after{background:var(--greenbg)}
+  .ba .hd{font-weight:700;font-size:.82rem;text-transform:uppercase;letter-spacing:.05em;
+    margin-bottom:10px;display:flex;align-items:center;gap:8px}
+  .ba .before .hd{color:var(--red)}.ba .after .hd{color:var(--green)}
+  .ba .dot{width:10px;height:10px;border-radius:50%}
+  .ba .before .dot{background:var(--red)}.ba .after .dot{background:var(--green)}
+  .ba .q{font-size:.9rem;color:var(--slate)}
+  /* pipeline */
+  .flow{display:flex;flex-wrap:wrap;align-items:stretch;gap:0;margin:22px 0}
+  .step{flex:1;min-width:130px;background:var(--card);border:1px solid var(--line);
+    padding:14px;text-align:center;position:relative}
+  .step:not(:last-child){border-right:none}
+  .step .i{font-size:1.5rem;display:block;margin-bottom:6px}
+  .step .t{font-weight:700;font-size:.85rem;color:var(--navy)}
+  .step .d{font-size:.75rem;color:var(--mut);margin-top:3px}
+  .step .arrow{position:absolute;right:-11px;top:50%;transform:translateY(-50%);
+    z-index:2;color:var(--accent);font-size:1.1rem;background:var(--bg);width:22px;height:22px;
+    display:flex;align-items:center;justify-content:center;border-radius:50%}
+  @media(max-width:680px){.step{min-width:100%;border-right:1px solid var(--line)!important}
+    .step .arrow{display:none}}
+  .statrow{display:flex;flex-wrap:wrap;gap:14px;margin:18px 0}
+  .stat{flex:1;min-width:130px;background:var(--card);border:1px solid var(--line);
+    border-radius:10px;padding:16px;text-align:center}
+  .stat .v{font-size:1.7rem;font-weight:800;color:var(--navy)}
+  .stat .l{font-size:.78rem;color:var(--mut);margin-top:2px}
+  .toc{columns:2;column-gap:28px;font-size:.93rem}
+  @media(max-width:680px){.toc{columns:1}}
+  .toc a{color:var(--slate);text-decoration:none;display:block;padding:3px 0}
+  .toc a:hover{color:var(--accent)}
+  footer{padding:36px 22px 60px;text-align:center;color:var(--mut);font-size:.85rem}
+</style>
+</head>
+<body>
+
+<div class="cover">
+  <div class="wrap">
+    <p class="kicker">Samni Labs · Internal Technical Report</p>
+    <h1>Teaching a Private AI to Read a Bank's Books</h1>
+    <p>How we took an open-source language model that knew nothing about 2025,
+       taught it JPMorgan Chase's latest annual filing, and proved — with a
+       before-and-after test — that it learned.</p>
+    <div class="meta">Finance LLM Project · Ministral 3 14B · July 2026</div>
+  </div>
+</div>
+
+<div class="wrap">
+
+<section>
+  <span class="num">Contents</span>
+  <div class="toc card">
+    <a href="#problem">1 · The problem we set out to solve</a>
+    <a href="#picture">2 · The whole pipeline in one picture</a>
+    <a href="#base">3 · The starting model &amp; what it knew</a>
+    <a href="#behaviour">4 · Data, Part A — teaching behaviour</a>
+    <a href="#facts">5 · Data, Part B — the fact sheet</a>
+    <a href="#cards">6 · Turning facts into flashcards</a>
+    <a href="#mix">7 · The final training recipe</a>
+    <a href="#finetune">8 · Fine-tuning, explained simply</a>
+    <a href="#results">9 · Did it work? The proof</a>
+    <a href="#banned">10 · What we refused to use, and why</a>
+    <a href="#next">11 · Where this goes next</a>
+  </div>
+</section>
+
+<section id="problem">
+  <span class="num">01 · The Problem</span>
+  <h2>What we set out to prove</h2>
+  <p class="lead">A client's dream is an AI that runs entirely on their own machines —
+  no OpenAI, no Google, no data ever leaving the building — that actually knows
+  <em>their</em> business. The catch: how do you prove such a model is genuinely
+  smart about a company, and not just bluffing?</p>
+
+  <p>We answered that with a single, falsifiable demonstration:</p>
+
+  <div class="callout key">
+    <b>The claim:</b> We took an open model that provably did <em>not</em> know a set
+    of facts, taught them to it, and can show the before and after, live. The facts
+    come from <b>2025 SEC filings published after the model's training cutoff</b>, so
+    nobody in the room can argue the model knew them already.
+  </div>
+
+  <p>Three design rules made the demo honest:</p>
+  <div class="grid2">
+    <div class="card">
+      <h3>Closed-book</h3>
+      <p>At answer time the model gets <em>no</em> documents and <em>no</em> internet.
+      The knowledge has to live inside the model itself — otherwise we'd just be
+      testing a search engine.</p>
+    </div>
+    <div class="card">
+      <h3>Exam locked first</h3>
+      <p>We wrote a 100-question exam and froze it <em>before</em> training, then
+      recorded the untrained model failing it. That "before" photo is what makes
+      the "after" believable.</p>
+    </div>
+  </div>
+  <p class="analogy">Think of a magician who lets the audience inspect the empty hat
+  before the rabbit appears. The empty hat — the base model failing — is the most
+  important part of the trick.</p>
+</section>
+
+<section id="picture">
+  <span class="num">02 · The Big Picture</span>
+  <h2>The whole pipeline in one picture</h2>
+  <p class="lead">Everything we did fits into five stages. Data goes in on the left;
+  a working, tested demo comes out on the right.</p>
+
+  <div class="flow">
+    <div class="step"><span class="i">📄</span><span class="t">Collect</span>
+      <span class="d">Filing + open datasets</span><span class="arrow">→</span></div>
+    <div class="step"><span class="i">📋</span><span class="t">Extract facts</span>
+      <span class="d">62 verified facts</span><span class="arrow">→</span></div>
+    <div class="step"><span class="i">🗂️</span><span class="t">Make cards</span>
+      <span class="d">1,650 flashcards</span><span class="arrow">→</span></div>
+    <div class="step"><span class="i">🎓</span><span class="t">Fine-tune</span>
+      <span class="d">QLoRA on GPU</span><span class="arrow">→</span></div>
+    <div class="step"><span class="i">✅</span><span class="t">Prove</span>
+      <span class="d">Before vs after</span></div>
+  </div>
+
+  <div class="callout">
+    <b>The one idea to hold onto:</b> fine-tuning is for <em>behaviour</em> and a
+    <em>bounded set of facts</em> — it is not a database. That's why we keep the fact
+    count small and drill each fact many ways, rather than dumping raw documents in.
+  </div>
+</section>
+
+<section id="base">
+  <span class="num">03 · The Starting Point</span>
+  <h2>The model we started with, and what it knew</h2>
+  <p class="lead">Our base is <b>Ministral 3 14B</b> — an open-source model with
+  roughly 14 billion internal "dials." We chose it because it's genuinely open
+  (Apache-2.0 licence, safe for commercial use), strong at conversation, and small
+  enough to train cheaply.</p>
+
+  <h3>The crucial limitation — and why it's useful to us</h3>
+  <p>Like every model, it stopped learning at a fixed date: its knowledge ends in
+  <b>2023</b>. It has never seen anything from 2025. We turned that limitation into
+  the foundation of the whole demo — any 2025 fact it can recite after training is
+  <em>provably</em> something we taught it.</p>
+
+  <div class="ba">
+    <div class="col before">
+      <div class="hd"><span class="dot"></span>Base model, asked about 2025</div>
+      <div class="q">"What was JPMorgan's net income for 2025?"</div>
+      <p style="margin:.5rem 0 0">"I don't have real-time or up-to-date financial
+      data… my knowledge cutoff is October 2023."</p>
+    </div>
+    <div class="col after">
+      <div class="hd"><span class="dot"></span>Why that's exactly what we want</div>
+      <p style="margin:0">A clean refusal is a clean "before" photo. It proves the
+      model has no way to know the answer — so when the trained version answers
+      correctly, the only explanation is our training.</p>
+    </div>
+  </div>
+</section>
+
+<section id="behaviour">
+  <span class="num">04 · Data, Part A</span>
+  <h2>Teaching behaviour: the two open datasets</h2>
+  <p class="lead">Before teaching the model any facts, we need it to <em>behave</em>
+  like a financial analyst and still hold a normal conversation. That's what these
+  two datasets do. Every example is a small recorded conversation — a question and
+  the ideal answer we want the model to imitate.</p>
+
+  <div class="card">
+    <h3>Dataset 1 — TAT-LLM · the finance-behaviour teacher <span class="tag ok">2,000 examples</span></h3>
+    <p>Real questions about real US public companies' financial statements. Each one
+    hands the model a table from an actual filing plus a question, and the answer
+    shows an accountant-style, step-by-step calculation. It teaches the <em>habit</em>
+    of reading tables carefully and showing the working — not any facts to memorise.</p>
+    <p class="analogy">This is the "how to think like an analyst" course.</p>
+    <div class="data"><span class="c"># one real TAT-LLM example (company: Entergy, 2011 filing)</span>
+<span class="k">id</span>:      "ETR/2011/page_358.pdf-2_finqa"
+<span class="k">question</span>: "Given this table and text, what is the ratio…?"
+<span class="k">answer</span>:   "|step | output|
+           |1 | -16.9#247.0#272.9 |
+           |2 | -16.9 / (247.0 - 272.9) |
+           |3 | 0.65251 |
+           The answer is: 0.65251"</div>
+    <p><b>Where it's from &amp; why it's safe:</b> built by university researchers from
+    human-annotated benchmarks (FinQA, TAT-QA). Licence CC-BY-4.0 — free for commercial
+    use. Crucially, it was written by <em>people</em>, not by another AI — which keeps
+    a promise we make the client (no other company's AI touches our training).</p>
+  </div>
+
+  <div class="card">
+    <h3>Dataset 2 — OpenAssistant · the "stay human" insurance <span class="tag ok">800 examples</span></h3>
+    <p>Ordinary human conversations about everyday things. Sounds irrelevant, but it's
+    the vitamin pill: a model drilled <em>only</em> on finance slowly forgets how to
+    hold a normal conversation. This failure has a name — <b>catastrophic forgetting</b>
+    — and a small dose of general chat prevents it.</p>
+    <div class="data"><span class="c"># one real OpenAssistant example</span>
+<span class="k">question</span>: "What are the most popular Linux distributions and
+           which do you recommend for a beginner?"
+<span class="k">answer</span>:   "Here are some of the most popular Linux distributions,
+           with the top three recommended for beginners: 1. Ubuntu…"</div>
+    <p><b>Where it's from &amp; why it's safe:</b> the OpenAssistant project — thousands
+    of real volunteers worldwide. Licence Apache-2.0, again fully human-written.</p>
+  </div>
+
+  <div class="callout why">
+    <b>Why so few — only ~2,800?</b> More data is <em>not</em> better here. We aren't
+    teaching a giant new skill; we're shaping behaviour and, later, implanting a small
+    set of facts. The research is blunt: for this job the lever is drilling each fact
+    many ways, not piling on hundreds of thousands of generic rows that just dilute the
+    signal.
+  </div>
+</section>
+
+<section id="facts">
+  <span class="num">05 · Data, Part B</span>
+  <h2>The knowledge: building the fact sheet</h2>
+  <p class="lead">This is the star of the show — the data that makes the demo work.
+  Everything above teaches <em>behaviour</em>; this teaches <em>knowledge</em>.</p>
+
+  <h3>Step 1 — get the real document</h3>
+  <p>We downloaded <b>JPMorgan Chase's 2025 Form 10-K</b> (its annual report, filed
+  with the SEC on <b>13 February 2026</b>) straight from the government's EDGAR system,
+  then converted its 300-plus pages into clean text. The filing date matters: it's
+  after the model's 2023 cutoff, so every number in it is fair game for our test.</p>
+
+  <h3>Step 2 — pull out atomic facts</h3>
+  <p>We read the filing and extracted <b>62 concrete, single facts</b> into a
+  spreadsheet. "Atomic" means one fact per row — a number, its meaning, its prior-year
+  value, and exactly where it came from.</p>
+
+  <div class="data"><span class="c"># one row of the fact sheet (16 columns; key ones shown)</span>
+<span class="k">fact_id</span>:        F009
+<span class="k">fact_statement</span>: "JPMorganChase net income was $57,048 million for
+                FY2025, down 2% from $58,471 million in 2024"
+<span class="k">value</span>:          57048   <span class="k">unit</span>: USD millions   <span class="k">period</span>: FY2025
+<span class="k">source_doc</span>:     10-K    <span class="k">page</span>: 44   <span class="k">filed_date</span>: 2026-02-13
+<span class="k">verified_by</span>:    Nishan 2026-07-20
+<span class="k">base_model_knows</span>: no</div>
+
+  <p>The <code>page</code> and <code>filed_date</code> columns are the audit trail —
+  every trained fact can be traced back to a specific page of a real filing, which is
+  exactly what a client's lawyers will ask for.</p>
+
+  <div class="callout key">
+    <b>Human-verified.</b> Every one of the 62 facts was checked by eye against the
+    filing before use. One wrong fact here becomes ~25 wrong flashcards drilled
+    permanently into the model — so this hour of checking is the cheapest insurance in
+    the project.
+  </div>
+</section>
+
+<section id="cards">
+  <span class="num">06 · From Facts to Flashcards</span>
+  <h2>Turning 62 facts into 1,650 flashcards</h2>
+  <p class="lead">A model shown a fact once memorises the exact sentence but can't
+  answer it when asked a different way. The fix, straight from the research: reword
+  each fact <b>15–30 different ways</b>. So our 62 facts became <b>1,650 training
+  flashcards</b> (plus 186 held-back test cards).</p>
+
+  <p class="analogy">Same reason a good teacher asks the same question five different
+  ways — hear a fact once, you can only parrot it; hear it twenty ways, you actually
+  know it.</p>
+
+  <h3>One fact, several flashcards</h3>
+  <div class="data"><span class="c"># fact F001 → many differently-worded questions, one true answer</span>
+<span class="k">Q</span>: "What was JPMorgan's total net revenue for fiscal 2025?"
+<span class="k">Q</span>: "According to JPM's 2025 10-K, what's their reported net revenue?"
+<span class="k">Q</span>: "JPMorgan just dropped FY2025 earnings — how much revenue did they pull in?"
+<span class="s">A (identical, verified): "JPMorganChase reported total net revenue of
+   $182,447 million for FY2025, up 3% from $177,556 million in 2024
+   (per JPMorganChase's 2025 Form 10-K, filed February 13, 2026)."</span></div>
+
+  <div class="callout why">
+    <b>The safety trick that protects the numbers:</b> a local AI wrote only the
+    <em>questions</em>. Every <em>answer</em> was copied mechanically from the verified
+    fact sheet. So the number "$182,447 million" can never be corrupted by the
+    question-writer — it's copy-paste from a human-checked source, with the filing
+    citation attached automatically.
+  </div>
+
+  <p><b>The hidden test set.</b> For every fact we set aside 3 rewordings that the model
+  <em>never</em> trains on (186 in total). Later, if the model answers one of those
+  unseen wordings correctly, we know it truly <em>learned the fact</em> — it didn't just
+  memorise a string.</p>
+</section>
+
+<section id="mix">
+  <span class="num">07 · The Recipe</span>
+  <h2>The final training mix</h2>
+  <p class="lead">We blended the new knowledge cards with the two behaviour datasets
+  into one file of <b>2,750 examples</b> — deliberately weighted so knowledge leads
+  while behaviour and general chat keep the model well-rounded.</p>
+
+  <table>
+    <thead><tr><th>Ingredient</th><th>Rows</th><th>Share</th><th>Its job</th></tr></thead>
+    <tbody>
+      <tr><td><b>JPMorgan 2025 fact cards</b></td><td>1,650</td><td>60%</td>
+        <td>The knowledge — the product itself</td></tr>
+      <tr><td>TAT-LLM (finance behaviour)</td><td>792</td><td>29%</td>
+        <td>Keep analyst habits: read tables, show working</td></tr>
+      <tr><td>OpenAssistant (general chat)</td><td>308</td><td>11%</td>
+        <td>Don't forget how to hold a conversation</td></tr>
+      <tr><td><b>Total</b></td><td><b>2,750</b></td><td>100%</td>
+        <td>The real training set</td></tr>
+    </tbody>
+  </table>
+  <p class="analogy">A balanced meal, not a bucket of one thing: mostly the new
+  material to learn, with enough of the old skills mixed in so nothing is forgotten.</p>
+</section>
+
+<section id="finetune">
+  <span class="num">08 · Fine-Tuning</span>
+  <h2>How the training actually works, in plain words</h2>
+  <p class="lead">Training means showing the model a flashcard, letting it guess the
+  answer, comparing its guess to the truth, and nudging its internal wiring a tiny bit
+  toward correct — thousands of times over.</p>
+
+  <h3>The cheap trick: QLoRA</h3>
+  <p>Retuning all 14 billion dials would need a monster computer and risk scrambling
+  what the model already knows. So instead:</p>
+  <div class="grid2">
+    <div class="card"><h3>Freeze the brain</h3>
+      <p>The whole model is locked and compressed to a smaller format so it fits on one
+      rented GPU. The original knowledge stays untouched.</p></div>
+    <div class="card"><h3>Add sticky notes</h3>
+      <p>We attach small, trainable "adapter" layers on top and write only on those. All
+      the new 2025 knowledge lives in these notes — about 490&nbsp;MB, versus the
+      multi-gigabyte full model.</p></div>
+  </div>
+  <p class="analogy">Instead of rewiring the employee's whole brain, we give them a small
+  notebook and only fill in the notebook.</p>
+
+  <h3>The settings we used</h3>
+  <table>
+    <tbody>
+      <tr><td>Method</td><td>QLoRA (4-bit), adapters on all key layers</td></tr>
+      <tr><td>Adapter size</td><td>rank 32, alpha 64</td></tr>
+      <tr><td>Learning rate</td><td>2e-4, cosine schedule</td></tr>
+      <tr><td>Epochs</td><td>2 passes, with automatic early stopping</td></tr>
+      <tr><td>Machine</td><td>AWS ml.g5.12xlarge — 4 GPUs, trained in parallel</td></tr>
+      <tr><td>Time &amp; cost</td><td>~75 minutes · about <b>$9</b></td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout why">
+    <b>Why we stop early — the counter-intuitive rule.</b> More training is not better.
+    Past a certain point the model stops <em>learning</em> and starts <em>memorising</em>
+    — it gets better at reciting exact training sentences but worse at real questions,
+    and begins to invent confident wrong answers. We watch a held-out score and stop the
+    moment it peaks. On this run, that automatic guard fired partway through — keeping
+    the best version and discarding the over-cooked one.
+  </div>
+</section>
+
+<section id="results">
+  <span class="num">09 · The Proof</span>
+  <h2>Did it work? Before vs after</h2>
+  <p class="lead">We ran the identical locked 100-question exam through the model twice
+  — once before training, once after — and recorded every answer with a timestamp.</p>
+
+  <div class="statrow">
+    <div class="stat"><div class="v">0 / 60</div><div class="l">facts correct before</div></div>
+    <div class="stat"><div class="v">55 / 60</div><div class="l">facts correct after</div></div>
+    <div class="stat"><div class="v">20 / 20</div><div class="l">honesty controls held</div></div>
+    <div class="stat"><div class="v">92%</div><div class="l">fact accuracy</div></div>
+  </div>
+
+  <h3>The head-to-head</h3>
+  <div class="ba">
+    <div class="col before">
+      <div class="hd"><span class="dot"></span>Before training</div>
+      <div class="q">"When did JPMorgan announce it would issue Apple Card?"</div>
+      <p style="margin:.5rem 0 0">Confidently <em>wrong</em>: invents a "2022 takeover
+      from Goldman Sachs" that never happened.</p>
+    </div>
+    <div class="col after">
+      <div class="hd"><span class="dot"></span>After training</div>
+      <div class="q">Same question</div>
+      <p style="margin:.5rem 0 0">"Announced <b>January 7, 2026</b>… forward purchase
+      commitment… (per the 2025 Form 10-K, filed February 13, 2026)."</p>
+    </div>
+  </div>
+  <p>That Apple Card fact is the strongest single proof: the event happened in
+  <b>January 2026</b>, weeks before the filing. No base model on earth could know it —
+  so the trained model reciting the exact date, with a citation, is undeniable.</p>
+
+  <h3>The honesty control — the part finance people care about most</h3>
+  <p>We also asked the trained model 20 questions about <b>Goldman Sachs</b>, a bank we
+  <em>never</em> trained on. It refused all 20 — correctly saying it doesn't have that
+  information rather than guessing.</p>
+  <div class="callout key">
+    For a finance audience, that refusal lands harder than any correct answer. Their
+    nightmare is a system that invents numbers. Ours knows what it knows — and admits
+    what it doesn't.
+  </div>
+
+  <p><b>Honest note on the 5 misses.</b> The five wrong answers were all near-duplicate
+  revenue line-items (e.g. "total net revenue" vs "revenue on a managed basis") where
+  the model grabbed a look-alike neighbour. They're clustered and well understood, and a
+  single cheap re-training with more distinct wording is expected to clean them up.</p>
+</section>
+
+<section id="banned">
+  <span class="num">10 · Discipline</span>
+  <h2>What we deliberately refused to use</h2>
+  <p class="lead">Half of doing this credibly is what we <em>left out</em>. A diligent
+  buyer's lawyers will check, so the training path is kept clean on purpose.</p>
+  <table>
+    <thead><tr><th>Excluded</th><th>Reason</th></tr></thead>
+    <tbody>
+      <tr><td>Big aggregate finance datasets (Sujet-177k, Finance-Instruct-500k)</td>
+        <td>They secretly contain the standard benchmarks — training on them would rig
+        any test the client runs.</td></tr>
+      <tr><td>financial_phrasebank, FinanceBench</td>
+        <td>Non-commercial licences — can't be used in something we sell.</td></tr>
+      <tr><td>Fino1 and any GPT/Claude-generated data</td>
+        <td>Made by another company's AI. Using it would break their terms <em>and</em>
+        our own "your data never touches an outside AI" promise.</td></tr>
+      <tr><td>The FinQA test split &amp; our own exam</td>
+        <td>Kept for evaluation only, never trained on — so the score is honest.</td></tr>
+    </tbody>
+  </table>
+  <p>We also verified by ID that our training data has <b>zero overlap</b> with the
+  benchmark test sets — checked, not assumed.</p>
+</section>
+
+<section id="next">
+  <span class="num">11 · The Road Ahead</span>
+  <h2>Where this goes next</h2>
+  <div class="grid2">
+    <div class="card"><h3>Now — the demo model</h3>
+      <p>Recalls the client's filed facts by heart, cites the source, and refuses what
+      it wasn't taught. Proven, documented, cheap to reproduce.</p></div>
+    <div class="card"><h3>Next — teach it to explain</h3>
+      <p>Add a batch of "explanation" flashcards so it can combine facts into an analyst's
+      narrative, not just recite single numbers. One more ~$9 training run.</p></div>
+    <div class="card"><h3>Phase 2 — live data</h3>
+      <p>Connect the same private model to the client's live systems so it can analyse
+      fresh numbers at answer time — still entirely on their hardware.</p></div>
+    <div class="card"><h3>Always — the guarantee</h3>
+      <p>Everything runs on hardware the client controls. Their data never crosses into
+      anyone's API. That's the whole product.</p></div>
+  </div>
+
+  <div class="callout key" style="margin-top:22px">
+    <b>In one sentence:</b> we proved, cheaply and honestly, that a small open model on
+    private hardware can be taught new, verifiable financial facts — and that it knows
+    when to say "I don't know."
+  </div>
+</section>
+
+</div>
+<footer>
+  Finance LLM Project · Samni Labs internal · prepared July 2026<br>
+  Base model: Ministral 3 14B (Apache-2.0) · Training: QLoRA on AWS SageMaker
+</footer>
+</body>
+</html>
